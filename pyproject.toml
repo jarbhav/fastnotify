@@ -1,0 +1,10 @@
+[project]
+name = "fastnotify"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard]>=0.121.2",
+    "redis[hiredis]>=7.0.1",
+]
