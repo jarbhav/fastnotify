@@ -1,10 +1,14 @@
 from typing import Union
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from pydantic import BaseModel
 from enum import IntEnum
 
+from producer.producer import Producer
+import json
+
 app = FastAPI()
+jq = Producer()
 
 class JobEnum(IntEnum):
     email = 1
@@ -24,7 +28,8 @@ def read_root():
 def read_item(item_id: int, q: Union[str, None] = None):
     return {"item_id": item_id, "q": q}
 
-@app.post("/notifications")
+@app.post("/notifications", status_code=status.HTTP_202_ACCEPTED)
 def add_task(task: Task):
     # add to redis queue
-    pass
+    res = jq.add_job(task.model_dump())
+    return res
