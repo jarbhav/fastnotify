@@ -2,6 +2,12 @@ import asyncio
 import json
 import redis.asyncio as redis
 from slack_service import send_slack_message   # Async slack function
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 async def process_messages():
     r = redis.Redis(host='localhost', port=6379, decode_responses=True)
@@ -11,7 +17,7 @@ async def process_messages():
         task = await r.brpop('job_queue')
         message_info = json.loads(task[1])
 
-        print(f"Processing message ID: {message_info['id']}")
+        logging.info(f"Processing message ID: {message_info['id']}")
 
         msg = message_info.get("message", "No message content")
 

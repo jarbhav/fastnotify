@@ -4,6 +4,12 @@ Send slack message asynchronously
 
 import aiohttp
 import os
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 WEBHOOK = os.getenv('SLACK_WEBHOOK')
 
@@ -14,11 +20,11 @@ async def send_slack_message(msg: str):
         async with aiohttp.ClientSession() as session:
             async with session.post(WEBHOOK, json=payload) as resp:
                 if resp.status != 200:
-                    print(f"Slack post failed: {resp.status}")
-                    print(f"Response: {await resp.text()}")
+                    logging.error(f"Slack post failed with status {resp.status}")
+                    logging.error(f"Response: {await resp.text()}")
                 else:
-                    print("Message sent successfully:", await resp.text())
+                    logging.info("Message sent successfully")
     except aiohttp.ClientError as e:
-        print(f"Network/client error: {e}")
+        logging.error(f"Network/client error: {e}")
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        logging.exception(f"Unexpected error: {e}")
