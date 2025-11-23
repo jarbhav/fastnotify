@@ -4,11 +4,11 @@ from fastapi import FastAPI, status
 from pydantic import BaseModel
 from enum import IntEnum
 
-from producer.producer import Producer
+from producer.producer import AsyncProducer
 import json
 
 app = FastAPI()
-jq = Producer()
+jq = AsyncProducer()
 
 class JobEnum(IntEnum):
     email = 1
@@ -29,7 +29,7 @@ def read_item(item_id: int, q: Union[str, None] = None):
     return {"item_id": item_id, "q": q}
 
 @app.post("/notifications", status_code=status.HTTP_202_ACCEPTED)
-def add_task(task: Task):
+async def add_task(task: Task):
     # add to redis queue
-    res = jq.add_job(task.model_dump())
+    res = await jq.add_job(task.model_dump())
     return res
