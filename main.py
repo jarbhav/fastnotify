@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from enum import IntEnum
 
 from producer.producer import AsyncProducer
-import json
+from consumers.redis_client import get_job_status
 
 app = FastAPI()
 jq = AsyncProducer()
@@ -24,12 +24,17 @@ def read_root():
     return "Welcome to FastNotify"
 
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Union[str, None] = None):
-    return {"item_id": item_id, "q": q}
-
 @app.post("/notifications", status_code=status.HTTP_202_ACCEPTED)
 async def add_task(task: Task):
     # add to redis queue
     res = await jq.add_job(task.model_dump())
     return res
+
+
+@app.get("/status/{job_id}")
+async def job_status(job_id: str):
+    """Return job status stored in Redis under `job_status:<job_id>`"""
+    st = await get_job_status(job_id)
+    if st is None:
+        return {"job_id": job_id, "status": "not_found"}
+    return {"job_id": job_id, **st}

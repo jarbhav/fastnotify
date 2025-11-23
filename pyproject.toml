@@ -9,4 +9,6 @@ dependencies = [
     "aiosmtplib>=5.0.0",
     "fastapi[standard]>=0.121.2",
     "redis[hiredis]>=7.0.1",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.22.0",
 ]
