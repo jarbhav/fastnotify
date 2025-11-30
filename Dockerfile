@@ -1,57 +1,77 @@
 ###
 # Multi-stage Dockerfile with two targets:
-#  - `dev` : development image with source mounted via volume and uvicorn --reload
+#  - `dev` : slim development image with source mounted via volume and uvicorn --reload
 #  - `prod`: production image that copies only necessary files and runs uvicorn
 ###
 
 ########################################
-# Base stage: common dependencies
+# Builder stage: build wheels / virtualenv
 ########################################
-FROM python:3.13-slim as base
+FROM python:3.13-slim AS builder
 
 WORKDIR /app
 
-# Install system packages needed for building some Python wheels
+# Install system packages needed for building wheels
 RUN apt-get update && apt-get install -y --no-install-recommends \
-	build-essential \
-	gcc \
-	curl \
+    build-essential \
+    gcc \
+    python3-venv \
+    curl \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
 
-# Install runtime dependencies into the base image (cached layer)
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Create a virtualenv and install all dependencies into it. This keeps
+# build-time compilation and heavy tooling out of the final runtime image.
+RUN python -m venv /opt/venv \
+ && /opt/venv/bin/pip install --upgrade pip setuptools wheel \
+ && /opt/venv/bin/pip install --no-cache-dir -r /app/requirements.txt
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
 
 ########################################
-# Dev stage: uses base image but leaves source editable (for mounts)
+# Dev stage: slim image with mounted source (no build tools)
 ########################################
-FROM base as dev
+FROM python:3.13-slim AS dev
 
-# In dev we keep the working dir and expect the developer to mount the project
-# into the container (e.g. with docker-compose volumes). We include uvicorn
-# and run it with --reload for hot-reload capabilities.
+WORKDIR /app
+
+# Copy only the runtime site-packages from the builder's virtualenv.
+# No build tools (gcc, build-essential) — keeps image small.
+COPY --from=builder /opt/venv/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Source code is mounted as a volume during development, so we don't COPY it.
+# uvicorn --reload watches the mounted /app directory for changes.
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 
 ########################################
-# Prod stage: copy only necessary files and run optimized server
+# Prod stage: copy only site-packages from builder
 ########################################
-FROM base as prod
+FROM python:3.13-slim AS prod
+
+WORKDIR /app
+
+# Copy only the runtime site-packages from the builder's virtualenv into
+# the system site-packages of the runtime image. This keeps the final image
+# small and avoids compiling wheels during the final image build.
+# Note: we rely on the same Python minor version in builder and prod images.
+COPY --from=builder /opt/venv/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 
 # Copy application source into the image (no development-only files)
 COPY . /app
 
 EXPOSE 8000
 
-# In production you may want to use a more robust process manager or
-# multiple workers. For simplicity we start uvicorn here; in real
-# deployments consider gunicorn + uvicorn workers.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+# Use python -m uvicorn so we don't rely on virtualenv console entrypoints
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
