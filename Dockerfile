@@ -5,27 +5,42 @@
 ###
 
 ########################################
-# Builder stage: build wheels / virtualenv
 ########################################
-FROM python:3.13-slim AS builder
+# Wheelhouse stage: prebuild wheels for production deps
+########################################
+FROM python:3.13-alpine AS wheelhouse
+
+WORKDIR /wheels
+
+# Build dependencies required to compile wheels
+RUN apk add --no-cache build-base gcc musl-dev python3-dev
+
+COPY requirements-prod.txt /app/requirements-prod.txt
+
+# Build wheels for production requirements into /wheels. These wheels are
+# architecture-specific; building them here and copying them into the
+# builder avoids rebuilding on the final image and allows offline install.
+RUN python -m pip install --upgrade pip setuptools wheel \ 
+ && python -m pip wheel --wheel-dir /wheels -r /app/requirements-prod.txt
+
+
+########################################
+# Builder stage: create virtualenv and install from wheelhouse
+########################################
+FROM python:3.13-alpine AS builder
 
 WORKDIR /app
 
-# Install system packages needed for building wheels
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    gcc \
-    python3-venv \
-    curl \
- && rm -rf /var/lib/apt/lists/*
+# Copy prebuilt wheels from the wheelhouse stage
+COPY --from=wheelhouse /wheels /wheels
+COPY requirements-prod.txt /app/requirements-prod.txt
 
-COPY requirements.txt /app/requirements.txt
-
-# Create a virtualenv and install all dependencies into it. This keeps
-# build-time compilation and heavy tooling out of the final runtime image.
+# Create a virtualenv and install all production dependencies from the
+# wheelhouse (no network). This keeps build-time toolchain in earlier
+# stages only.
 RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install --upgrade pip setuptools wheel \
- && /opt/venv/bin/pip install --no-cache-dir -r /app/requirements.txt
+ && /opt/venv/bin/pip install --no-index --find-links=/wheels -r /app/requirements-prod.txt
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
@@ -34,7 +49,7 @@ ENV PYTHONPATH=/app
 ########################################
 # Dev stage: slim image with mounted source (no build tools)
 ########################################
-FROM python:3.13-slim AS dev
+FROM python:3.13-alpine AS dev
 
 WORKDIR /app
 
@@ -55,7 +70,7 @@ CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000
 ########################################
 # Prod stage: copy only site-packages from builder
 ########################################
-FROM python:3.13-slim AS prod
+FROM python:3.13-alpine AS prod
 
 WORKDIR /app
 

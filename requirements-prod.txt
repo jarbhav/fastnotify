@@ -1,0 +1,5 @@
+aiohttp>=3.13.2
+aiosmtplib>=5.0.0
+fastapi[standard]>=0.121.2
+redis[hiredis]>=7.0.1
+uvicorn[standard]>=0.21.0
